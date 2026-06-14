@@ -16,8 +16,8 @@ menu:
     - name: Posts
       url: /posts/
       weight: 1
-    - name: Tags
-      url: /tags/
+    - name: Events
+      url: /events/
       weight: 2
     - name: Station Board
       url: https://station-board.pages.dev
