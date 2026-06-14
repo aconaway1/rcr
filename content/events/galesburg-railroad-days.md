@@ -1,6 +1,7 @@
 ---
 title: "Galesburg Railroad Days"
 date: 2026-06-25
+publishDate: 2026-06-14
 location: "Galesburg, IL"
 ---
 
