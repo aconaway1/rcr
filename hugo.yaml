@@ -20,5 +20,8 @@ menu:
       url: /tags/
       weight: 2
     - name: Station Board
-      url: /station-board/
+      url: https://PLACEHOLDER.pages.dev
       weight: 3
+    - name: Amtrak Tracker
+      url: https://asm.transitdocs.com/
+      weight: 4
