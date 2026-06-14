@@ -14,13 +14,14 @@ The channel is about railfanning: watching trains, tracking them, and occasional
 Posts on this site will generally fall into one of a few categories:
 
 - **Video companions** — extra detail, links, and context for things covered in a video
-- **Project write-ups** — how things like the Station Board got built, the decisions behind them, and what I'd do differently
+- **Project write-ups** — the decisions behind projects covered on the channel, and what could be done differently
 - **Station notes** — observations and tips from time spent at GBB and other stops along these routes
 
-## The Station Board
+## Tools
 
-The first project worth mentioning is the [Station Board](/station-board/) — a live Amtrak arrivals board that works for any station. It's a single HTML file that learns train schedules by watching the Amtraker API over time. No backend, no login, no setup beyond opening it in a browser.
+A few tools worth bookmarking:
 
-It started as a tool for my own use at GBB and grew from there. The full story of how it was built will be its own post.
+- **[Station Board](https://PLACEHOLDER.pages.dev)** — a live Amtrak arrivals board for any station; self-learning, no setup required
+- **[Amtrak Tracker](https://asm.transitdocs.com/)** — live map of Amtrak trains across the network
 
 More to come.
