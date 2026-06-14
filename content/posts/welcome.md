@@ -21,7 +21,7 @@ Posts on this site will generally fall into one of a few categories:
 
 A few tools worth bookmarking:
 
-- **[Station Board](https://PLACEHOLDER.pages.dev)** — a live Amtrak arrivals board for any station; self-learning, no setup required
+- **[Station Board](https://station-board.pages.dev)** — a live Amtrak arrivals board for any station; self-learning, no setup required
 - **[Amtrak Tracker](https://asm.transitdocs.com/)** — live map of Amtrak trains across the network
 
 More to come.
