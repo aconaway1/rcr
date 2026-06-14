@@ -1,5 +1,5 @@
 ---
-title: "River & Rail Weekend"
+title: "Event: River & Rail Weekend"
 date: 2026-09-26
 publishDate: 2026-06-14
 expiryDate: 2026-09-28
