@@ -7,7 +7,7 @@ tags: ['railfanning', 'amtrak', 'intro']
 
 This site is the companion to the [Ron Con Rails YouTube channel](https://www.youtube.com/channel/UCUrU9uhQBmQFxKsBK-GqDfg) — a place for show notes, project write-ups, and tools related to the videos.
 
-The channel is about railfanning: watching trains, tracking them, and occasionally building things to make the hobby more interesting. My home base is **Galesburg, IL (GBB)**, which puts me on the Southwest Chief and California Zephyr routes — two of Amtrak's long-distance workhorses — plus the Illinois Zephyr and Carl Sandburg running the Chicago–Quincy corridor.
+The channel is about railfanning: watching trains and tracking them. My home base is **Galesburg, IL (GBB)**, which puts me on the Southwest Chief and California Zephyr routes — two of Amtrak's long-distance workhorses — plus the Illinois Zephyr and Carl Sandburg running the Chicago–Quincy corridor.
 
 ## What to Expect Here
 
