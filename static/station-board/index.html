@@ -1,0 +1,2180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amtrak Arrivals Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<!-- Leaflet loaded on demand by app.js -->
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0c0f;
+    --panel: #0f1318;
+    --amber: #f5a623;
+    --green: #39d98a;
+    --red: #ff4d4d;
+    --blue: #4db8ff;
+    --muted: #4a5568;
+    --text: #e2e8f0;
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-body: 'DM Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px 16px;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+
+  .station-name {
+    font-family: var(--font-display);
+    font-size: 3rem;
+    color: var(--amber);
+    line-height: 1;
+    letter-spacing: 2px;
+  }
+
+  .station-meta {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .clock-wrap {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .clock {
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    color: var(--amber);
+    line-height: 1;
+  }
+
+  .clock-date {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── Status bar ── */
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    padding: 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .status-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .status-dot.loading {
+    background: var(--amber);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Progress bar ── */
+  .progress-track {
+    width: 100%;
+    height: 3px;
+    background: rgba(245,166,35,0.1);
+    margin-bottom: 16px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--amber), #d4891a);
+    border-radius: 2px;
+    transition: width 1s linear;
+  }
+
+  /* ── Station switcher ── */
+  .station-switcher {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .station-switcher label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .station-switcher input {
+    background: var(--panel);
+    border: 1px solid var(--muted);
+    color: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    padding: 4px 8px;
+    width: 60px;
+    text-transform: uppercase;
+    border-radius: 3px;
+    outline: none;
+  }
+
+  .station-switcher input:focus {
+    border-color: var(--amber);
+  }
+
+  .station-switcher button {
+    background: var(--amber);
+    color: var(--bg);
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 5px 12px;
+    cursor: pointer;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+  }
+
+  .station-switcher button:hover { opacity: 0.85; }
+  .switcher-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--muted);
+    margin: 0 4px;
+    opacity: 0.4;
+  }
+  .railcam-status {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text);
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .railcam-status.none { color: var(--muted); font-style: italic; }
+  .railcam-setup-btn {
+    background: rgba(245,166,35,0.15);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+  .railcam-setup-btn:hover { background: rgba(245,166,35,0.3); }
+
+  /* ── Board ── */
+  .board {
+    background: var(--panel);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(245,166,35,0.08);
+  }
+
+  .board-header {
+    display: grid;
+    grid-template-columns: 70px 1fr 1fr 140px 130px;
+    padding: 10px 16px;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    border-bottom: 1px solid rgba(245,166,35,0.1);
+  }
+
+  .board-row {
+    display: grid;
+    grid-template-columns: 70px 1fr 1fr 140px 130px;
+    padding: 12px 16px;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    border-left: 3px solid transparent;
+    transition: background 0.2s;
+  }
+
+  .board-row:hover {
+    background: rgba(255,255,255,0.02);
+  }
+
+  .board-row:last-child { border-bottom: none; }
+
+  .board-row.on-time { border-left-color: var(--green); }
+  .board-row.late { border-left-color: var(--red); }
+  .board-row.early { border-left-color: var(--blue); }
+  .board-row.scheduled { border-left-color: var(--muted); }
+  .board-row.arriving-soon {
+    background: rgba(245,166,35,0.08);
+    animation: arrival-pulse 2s ease-in-out infinite;
+  }
+  @keyframes arrival-pulse {
+    0%, 100% { background: rgba(245,166,35,0.08); }
+    50% { background: rgba(245,166,35,0.18); }
+  }
+  .railcam-link {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--red);
+    text-decoration: none;
+    letter-spacing: 0.5px;
+    animation: railcam-blink 1.5s ease-in-out infinite;
+  }
+  .railcam-link:hover { text-decoration: underline; }
+  .railcam-change {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--muted);
+    text-decoration: none;
+    cursor: pointer;
+    margin-left: 6px;
+    border: none;
+    background: none;
+    padding: 0;
+  }
+  .railcam-change:hover { color: var(--amber); }
+  .railcam-pick {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--amber);
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+    letter-spacing: 0.5px;
+  }
+  .railcam-pick:hover { text-decoration: underline; }
+  @keyframes railcam-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .railcam-modal {
+    background: var(--panel);
+    border: 1px solid rgba(245,166,35,0.3);
+    border-radius: 8px;
+    width: 90vw;
+    max-width: 450px;
+    overflow: hidden;
+  }
+  .railcam-steps {
+    padding: 0 16px 16px;
+  }
+  .railcam-step {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .railcam-yt-btn {
+    background: rgba(255,77,77,0.15);
+    border: 1px solid var(--red);
+    color: var(--red);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    margin-bottom: 16px;
+  }
+  .railcam-yt-btn:hover { background: rgba(255,77,77,0.25); }
+  .railcam-search-bar {
+    display: flex;
+    gap: 8px;
+  }
+  .railcam-search-bar input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--muted);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    padding: 6px 10px;
+    border-radius: 4px;
+    outline: none;
+  }
+  .railcam-search-bar input:focus { border-color: var(--amber); }
+  .railcam-search-bar button {
+    background: rgba(245,166,35,0.15);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .railcam-search-bar button:hover { background: rgba(245,166,35,0.3); }
+  .railcam-error {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--red);
+    margin-top: 8px;
+  }
+
+  .train-num {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    color: var(--amber);
+    line-height: 1;
+  }
+
+  .route-name {
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    color: var(--text);
+  }
+
+  .route-nearest {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .direction {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .arrival-time {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+
+  .arrival-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--muted);
+    margin-top: 2px;
+    text-transform: uppercase;
+  }
+
+  .status-badge {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    text-align: center;
+    display: inline-block;
+  }
+
+  .status-badge.on-time { background: rgba(57,217,138,0.12); color: var(--green); }
+  .status-badge.late { background: rgba(255,77,77,0.12); color: var(--red); }
+  .status-badge.early { background: rgba(77,184,255,0.12); color: var(--blue); }
+  .status-badge.scheduled { background: rgba(74,85,104,0.15); color: var(--muted); }
+
+  /* ── Row detail expand ── */
+  .board-row.expandable { cursor: pointer; }
+
+  .detail-panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background: rgba(0,0,0,0.25);
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .detail-panel.open {
+    max-height: 2000px;
+    transition: max-height 0.5s ease;
+  }
+
+  .detail-inner {
+    padding: 12px 16px 16px;
+  }
+
+  .detail-heading {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .detail-stops {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .detail-stop {
+    display: grid;
+    grid-template-columns: 20px 1fr 90px 90px 60px;
+    align-items: center;
+    padding: 5px 0;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    border-left: 2px solid rgba(74,85,104,0.3);
+    margin-left: 6px;
+    padding-left: 12px;
+    position: relative;
+  }
+
+  .detail-stop::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  .detail-stop.departed { color: var(--text); opacity: 0.5; }
+  .detail-stop.departed::before { background: var(--text); opacity: 0.5; }
+
+  .detail-stop.current { color: var(--amber); }
+  .detail-stop.current::before { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+
+  .detail-stop.enroute { color: var(--text); }
+  .detail-stop.enroute::before { background: var(--muted); }
+
+  .detail-stop.this-station { color: var(--amber); font-weight: 700; }
+  .detail-stop.this-station::before { background: var(--amber); width: 10px; height: 10px; left: -6px; }
+
+  .detail-stop-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 4px 18px;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--amber);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+  .detail-stop-divider::before, .detail-stop-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--amber);
+    opacity: 0.4;
+  }
+
+  .detail-stop-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-stop-code { color: var(--muted); font-size: 0.6rem; margin-left: 4px; }
+  .detail-stop-cam { color: var(--amber); font-size: 0.55rem; margin-left: 6px; opacity: 0.7; text-decoration: none; letter-spacing: 0.05em; }
+  .detail-stop-cam:hover { opacity: 1; }
+
+  .detail-stop-late { color: var(--red); font-size: 0.6rem; }
+  .detail-stop-early { color: var(--blue); font-size: 0.6rem; }
+  .detail-stop-ontime { color: var(--green); font-size: 0.6rem; }
+
+  @media (max-width: 700px) {
+    .detail-stop {
+      grid-template-columns: 20px 1fr 70px 70px;
+    }
+    .detail-stop .detail-stop-delta { display: none; }
+  }
+
+  /* ── Skeleton loading ── */
+  .skeleton-row {
+    display: grid;
+    grid-template-columns: 70px 1fr 1fr 140px 130px;
+    padding: 12px 16px;
+    gap: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .skeleton-block {
+    height: 20px;
+    background: linear-gradient(90deg, var(--panel) 25%, rgba(245,166,35,0.06) 50%, var(--panel) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 3px;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 16px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .error-banner {
+    background: rgba(255,77,77,0.1);
+    border: 1px solid rgba(255,77,77,0.3);
+    color: var(--red);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 8px 16px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .suggestion-btn {
+    background: rgba(245,166,35,0.15);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin: 4px 4px 0 0;
+  }
+  .suggestion-btn:hover { background: rgba(245,166,35,0.3); }
+  .suggestion-label {
+    color: var(--muted);
+    font-size: 0.7rem;
+    margin-top: 6px;
+    display: block;
+  }
+
+  /* ── Map modal ── */
+  .map-btn {
+    background: rgba(245,166,35,0.15);
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .map-btn:hover { background: rgba(245,166,35,0.3); }
+
+  .clear-btn {
+    background: transparent;
+    border: 1px solid rgba(200, 70, 70, 0.35);
+    color: rgba(200, 70, 70, 0.55);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .clear-btn:hover {
+    background: rgba(200, 70, 70, 0.1);
+    border-color: rgba(200, 70, 70, 0.7);
+    color: rgba(200, 70, 70, 0.85);
+  }
+  .clear-btn.armed {
+    background: rgba(200, 70, 70, 0.15);
+    border-color: rgb(200, 70, 70);
+    color: rgb(200, 70, 70);
+  }
+
+  .debug-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 35vh;
+    background: #070a0d;
+    border-top: 1px solid #1e2a35;
+    display: flex;
+    flex-direction: column;
+    z-index: 900;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+  }
+  .debug-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 12px;
+    border-bottom: 1px solid #1e2a35;
+    flex-shrink: 0;
+  }
+  .debug-toolbar-label {
+    color: var(--muted);
+    letter-spacing: 1px;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    margin-right: 4px;
+  }
+  .debug-level-btn {
+    background: transparent;
+    border: 1px solid #2d3748;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    padding: 2px 7px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+  .debug-level-btn.active {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+  .debug-toolbar-right {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .debug-toolbar-action {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    cursor: pointer;
+    opacity: 0.55;
+    letter-spacing: 0.5px;
+    padding: 0;
+  }
+  .debug-toolbar-action:hover { opacity: 1; }
+  .debug-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 12px;
+  }
+  .debug-entry {
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .debug-entry.lvl-1 { color: #607585; }
+  .debug-entry.lvl-2 { color: #3d5060; }
+  .debug-entry.lvl-err { color: rgba(200,70,70,0.85); }
+  .debug-ts { color: #2d3d4a; margin-right: 8px; }
+  .debug-tag { color: rgba(245,166,35,0.55); margin-right: 6px; }
+
+  .map-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .map-modal {
+    background: var(--panel);
+    border: 1px solid rgba(245,166,35,0.3);
+    border-radius: 8px;
+    width: 90vw;
+    max-width: 700px;
+    overflow: hidden;
+  }
+  .map-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    font-family: var(--font-mono);
+    color: var(--amber);
+    font-size: 0.85rem;
+  }
+  .map-modal-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+  }
+  .map-modal-close:hover { color: var(--text); }
+  #mapContainer {
+    width: 100%;
+    height: 50vh;
+    max-height: 500px;
+  }
+
+  /* ── Stale state ── */
+  .stale-badge {
+    display: none;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--red);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-left: 12px;
+    vertical-align: middle;
+    animation: stale-blink 1.5s ease-in-out infinite;
+  }
+  body.stale .stale-badge { display: inline; }
+  body.stale .station-name {
+    text-shadow: 0 0 18px rgba(255,77,77,0.7), 0 0 40px rgba(255,77,77,0.3);
+  }
+  @keyframes stale-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 700px) {
+    .board-header, .board-row {
+      grid-template-columns: 50px 1fr 100px 100px;
+    }
+    .board-header .col-dir, .board-row .col-dir { display: none; }
+    .station-name { font-size: 2rem; }
+    .clock { font-size: 1.8rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div>
+        <span class="station-name" id="stationName">LOADING…</span><span class="stale-badge" id="staleBadge">STALE</span>
+      </div>
+      <div class="station-meta" id="stationMeta"></div>
+    </div>
+    <div class="clock-wrap">
+      <div class="clock" id="clock"></div>
+      <div class="clock-date" id="clockDate"></div>
+    </div>
+  </div>
+
+  <!-- Station switcher -->
+  <div class="station-switcher">
+    <label for="stationInput">Station:</label>
+    <input type="text" id="stationInput" maxlength="4" value="GBB">
+    <button id="stationGo">Go</button>
+    <span class="switcher-divider"></span>
+    <label>Railcam:</label>
+    <span id="railcamStatus" class="railcam-status">None</span>
+    <a id="railcamWatch" class="railcam-setup-btn" style="display:none;text-decoration:none;" target="_blank" rel="noopener">Watch</a>
+    <button id="railcamSetupBtn" class="railcam-setup-btn">Set up</button>
+    <span class="switcher-divider"></span>
+    <button class="map-btn" id="stationMapBtn">INBOUND MAP</button>
+    <span class="switcher-divider"></span>
+    <button class="clear-btn" id="clearStationBtn">CLEAR DATA</button>
+  </div>
+
+  <!-- Error banner -->
+  <div class="error-banner" id="errorBanner"></div>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <div class="status-left">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="lastUpdated">LOADING…</span>
+    </div>
+    <div id="nextRefresh"></div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill" style="width:100%"></div>
+  </div>
+
+  <!-- Board -->
+  <div class="board">
+    <div class="board-header">
+      <div>Train</div>
+      <div>Route</div>
+      <div class="col-dir">Direction</div>
+      <div>Next Arrival</div>
+      <div>Status</div>
+    </div>
+    <div id="boardBody">
+      <!-- skeleton rows -->
+      <div class="skeleton-row"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div>
+      <div class="skeleton-row"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div>
+      <div class="skeleton-row"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div>
+      <div class="skeleton-row"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;padding:1.2rem 0 0.6rem;font-family:'Share Tech Mono',monospace;font-size:0.65rem;color:#2d3748;letter-spacing:0.05em;">Station Board v1.6.3 &mdash; &copy; 2026</div>
+<div style="text-align:center;padding-bottom:0.4rem;">
+  <a id="clearAllBtn" href="#" style="font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:#2d3748;letter-spacing:0.05em;text-decoration:none;">clear all data</a>
+</div>
+<div style="text-align:center;padding-bottom:1.2rem;">
+  <a id="debugToggleBtn" href="#" style="font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:#2d3748;letter-spacing:0.05em;text-decoration:none;">debug</a>
+</div>
+
+<div id="debugPanel" class="debug-panel" style="display:none;">
+  <div class="debug-toolbar">
+    <span class="debug-toolbar-label">Debug</span>
+    <button class="debug-level-btn" data-level="1">L1</button>
+    <button class="debug-level-btn" data-level="2">L2</button>
+    <div class="debug-toolbar-right">
+      <button class="debug-toolbar-action" id="debugClearLog">CLEAR</button>
+      <button class="debug-toolbar-action" id="debugClose">&times;</button>
+    </div>
+  </div>
+  <div class="debug-log" id="debugLog"></div>
+</div>
+
+<!-- Map modal -->
+<div class="map-overlay" id="mapOverlay" style="display:none">
+  <div class="map-modal">
+    <div class="map-modal-header">
+      <span id="mapTitle">TRAIN MAP</span>
+      <button class="map-modal-close" id="mapClose">&times;</button>
+    </div>
+    <div id="mapContainer"></div>
+  </div>
+</div>
+
+<!-- Railcam picker modal -->
+<div class="map-overlay" id="railcamOverlay" style="display:none">
+  <div class="railcam-modal">
+    <div class="map-modal-header">
+      <span id="railcamTitle">SET UP RAILCAM</span>
+      <button class="map-modal-close" id="railcamClose">&times;</button>
+    </div>
+    <div class="railcam-steps">
+      <div class="railcam-step">1. Find a railcam on YouTube</div>
+      <button class="railcam-yt-btn" id="railcamYtBtn">SEARCH YOUTUBE</button>
+      <div class="railcam-step">2. Paste the video URL here</div>
+      <div class="railcam-search-bar">
+        <input type="text" id="railcamUrlInput" placeholder="https://www.youtube.com/watch?v=...">
+        <button id="railcamSaveBtn">Save</button>
+      </div>
+      <div class="railcam-error" id="railcamError" style="display:none">Please paste a valid YouTube URL</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const API_BASE = 'https://api-v3.amtraker.com/v3';
+  const REFRESH_MS = 10 * 60 * 1000;
+  const RERENDER_MS = 30000;
+  const ARRIVING_SOON_MS = 10 * 60 * 1000;
+
+  // ── Grouped state ──
+  function getStationMetaKey(code) { return `amtrak_meta_${code}`; }
+  function loadStationMeta(code) {
+    try { return JSON.parse(localStorage.getItem(getStationMetaKey(code))) || {}; } catch { return {}; }
+  }
+  function saveStationMeta() {
+    localStorage.setItem(getStationMetaKey(station.code), JSON.stringify({ tz: station.tz, lat: station.lat, lon: station.lon, name: station.name }));
+  }
+
+  const _stationMeta = loadStationMeta(localStorage.getItem('amtrak_station') || 'GBB');
+  const station = {
+    code: localStorage.getItem('amtrak_station') || 'GBB',
+    tz: _stationMeta.tz || 'America/Chicago',
+    lat: _stationMeta.lat || null,
+    lon: _stationMeta.lon || null,
+    name: _stationMeta.name || ''
+  };
+
+  const timers = {
+    refresh: null,
+    countdown: null,
+    rerender: null,
+    deadline: null
+  };
+
+  const mapState = {
+    instance: null,
+    mode: null,       // 'train' | 'station'
+    trainNum: null,
+    markers: {},
+    leafletLoaded: false
+  };
+
+  let railcamUrl = null;
+  let lastFetchTime = null;
+  let lastTrainData = null;
+  let fetchController = null;
+  let isFetching = false;
+  let debugLevel = parseInt(new URLSearchParams(location.search).get('debug') || '0');
+
+  const $ = (id) => document.getElementById(id);
+
+  // ── Debug logging ──
+  function dbg(level, tag, msg) {
+    if (level > debugLevel) return;
+    const now = new Date();
+    const ts = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      + '.' + String(now.getMilliseconds()).padStart(3, '0');
+    const logEl = $('debugLog');
+    if (logEl) {
+      const entry = document.createElement('div');
+      entry.className = `debug-entry lvl-${level}`;
+      entry.innerHTML = `<span class="debug-ts">${ts}</span><span class="debug-tag">[${escHtml(tag)}]</span>${escHtml(String(msg))}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    console.log(`[${ts}] [${tag}] ${msg}`);
+  }
+
+  function dbgErr(tag, msg) {
+    const now = new Date();
+    const ts = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      + '.' + String(now.getMilliseconds()).padStart(3, '0');
+    const logEl = $('debugLog');
+    if (logEl) {
+      const entry = document.createElement('div');
+      entry.className = 'debug-entry lvl-err';
+      entry.innerHTML = `<span class="debug-ts">${ts}</span><span class="debug-tag">[${escHtml(tag)}]</span>${escHtml(String(msg))}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    console.error(`[${ts}] [${tag}] ${msg}`);
+  }
+
+  // ── Helpers ──
+  function escHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function formatTimeInTz(date, tz) {
+    try {
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz
+      });
+    } catch {
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit', hour12: true
+      });
+    }
+  }
+
+  function formatDelta(minutes) {
+    if (minutes < 60) return `${minutes} MIN`;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m === 0 ? `${h} HR` : `${h} HR ${m} MIN`;
+  }
+
+  function computeDelay(estArr, schArr) {
+    if (!estArr || !schArr) return { diffMin: 0, statusText: 'ON TIME', statusClass: 'on-time' };
+    const diffMin = Math.round((estArr - schArr) / 60000);
+    if (diffMin > 0) return { diffMin, statusText: `${formatDelta(diffMin)} LATE`, statusClass: 'late' };
+    if (diffMin < 0) return { diffMin, statusText: `${formatDelta(Math.abs(diffMin))} EARLY`, statusClass: 'early' };
+    return { diffMin: 0, statusText: 'ON TIME', statusClass: 'on-time' };
+  }
+
+  function getDateLabel(date, tz) {
+    if (!date) return '';
+    const now = new Date();
+    try {
+      const dayNow = now.toLocaleDateString('en-US', { timeZone: tz });
+      const dayArr = date.toLocaleDateString('en-US', { timeZone: tz });
+      if (dayNow === dayArr) return 'TODAY';
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dayTom = tomorrow.toLocaleDateString('en-US', { timeZone: tz });
+      if (dayTom === dayArr) return 'TOMORROW';
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: tz }).toUpperCase();
+    } catch {
+      return 'TODAY';
+    }
+  }
+
+  function parseScheduledTime(timeStr, tz) {
+    // Build a Date representing the given time today in the station's timezone
+    const now = new Date();
+    const [time, period] = timeStr.split(' ');
+    const [h, m] = time.split(':').map(Number);
+    let hour = h;
+    if (period === 'PM' && hour !== 12) hour += 12;
+    if (period === 'AM' && hour === 12) hour = 0;
+
+    try {
+      const dateStr = now.toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
+      const pad = (n) => String(n).padStart(2, '0');
+      // Treat the target time as UTC, then find what that instant looks like in the
+      // station timezone to derive the offset
+      const guessUTC = new Date(`${dateStr}T${pad(hour)}:${pad(m)}:00Z`);
+      const fmt = guessUTC.toLocaleString('en-US', { timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const [datePart, timePart] = fmt.split(', ');
+      const [mo, dy, yr] = datePart.split('/');
+      const [hh, mm, ss] = timePart.split(':');
+      const fmtAsUTC = Date.UTC(+yr, +mo - 1, +dy, +hh, +mm, +ss);
+      const tzOffset = fmtAsUTC - guessUTC.getTime();
+      // Subtract the offset so the Date represents the target local time in UTC
+      const d = new Date(guessUTC.getTime() - tzOffset);
+      if (d < now) d.setDate(d.getDate() + 1);
+      return d;
+    } catch {
+      const d = new Date(now);
+      d.setHours(hour, m, 0, 0);
+      if (d < now) d.setDate(d.getDate() + 1);
+      return d;
+    }
+  }
+
+  function isArrivingSoon(t) {
+    return t.isLive && t.arrivalDate && (t.arrivalDate - new Date()) > 0 && (t.arrivalDate - new Date()) <= ARRIVING_SOON_MS;
+  }
+
+  // ── Migrations ──
+  function runMigrations() {
+    if (localStorage.getItem('amtrak_migration_v2')) return;
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith('amtrak_railcam_')) continue;
+      try {
+        const entry = JSON.parse(localStorage.getItem(key));
+        if (entry && entry.url && entry.url.includes('results?search_query=')) {
+          localStorage.removeItem(key);
+        }
+      } catch (e) { /* malformed entry, leave it */ }
+    }
+    localStorage.setItem('amtrak_migration_v2', '1');
+  }
+
+  // ── Init ──
+  function init() {
+    runMigrations();
+    $('stationInput').value = station.code;
+    startClock();
+    fetchAndRender();
+    setupStationSwitcher();
+    loadStationDirectory(); // pre-load for suggestions
+  }
+
+  // ── Station switcher ──
+  function setupStationSwitcher() {
+    $('stationGo').addEventListener('click', switchStation);
+    $('stationInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') switchStation();
+    });
+  }
+
+  function switchStation() {
+    const code = $('stationInput').value.trim().toUpperCase();
+    if (!code || code.length < 2 || code.length > 4) return;
+    if (code === station.code && !isFetching) { /* same station, allow re-fetch */ }
+    dbg(1, 'station', `switching to ${code}`);
+    station.code = code;
+    const newMeta = loadStationMeta(code);
+    station.tz = newMeta.tz || 'America/Chicago';
+    station.lat = newMeta.lat || null;
+    station.lon = newMeta.lon || null;
+    station.name = newMeta.name || '';
+    railcamUrl = null;
+    localStorage.setItem('amtrak_station', code);
+    $('stationName').textContent = 'LOADING…';
+    $('stationMeta').textContent = '';
+    clearStale();
+    showSkeleton();
+    hideError();
+    closeMap();
+    clearAllTimers();
+    fetchAndRender();
+  }
+
+  // ── Clock ──
+  function startClock() {
+    function tick() {
+      const now = new Date();
+      try {
+        $('clock').textContent = now.toLocaleTimeString('en-US', {
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+          hour12: true, timeZone: station.tz
+        });
+        $('clockDate').textContent = now.toLocaleDateString('en-US', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+          timeZone: station.tz
+        });
+      } catch {
+        $('clock').textContent = now.toLocaleTimeString('en-US', {
+          hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+        });
+        $('clockDate').textContent = now.toLocaleDateString('en-US', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+      }
+    }
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  // ── Timers ──
+  function startCountdown(intervalMs = REFRESH_MS) {
+    timers.deadline = Date.now() + intervalMs;
+    clearInterval(timers.countdown);
+    timers.countdown = setInterval(() => {
+      const remaining = Math.max(0, timers.deadline - Date.now());
+      const mins = Math.floor(remaining / 60000);
+      const secs = Math.floor((remaining % 60000) / 1000);
+      $('nextRefresh').textContent = `NEXT REFRESH IN ${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+      $('progressFill').style.width = ((remaining / intervalMs) * 100) + '%';
+    }, 1000);
+  }
+
+  function startRerender() {
+    clearInterval(timers.rerender);
+    timers.rerender = setInterval(() => {
+      if (lastTrainData) renderBoard(refreshRows(lastTrainData));
+      // If a train just entered the arriving-soon window, accelerate the next fetch
+      if (lastTrainData && lastTrainData.some(isArrivingSoon) && timers.deadline - Date.now() > 60 * 1000) {
+        clearTimeout(timers.refresh);
+        timers.refresh = setTimeout(fetchAndRender, 60 * 1000);
+        startCountdown(60 * 1000);
+      }
+    }, RERENDER_MS);
+  }
+
+  function clearAllTimers() {
+    clearTimeout(timers.refresh);
+    clearInterval(timers.countdown);
+    clearInterval(timers.rerender);
+  }
+
+  // ── Error / Skeleton ──
+  function showError(msg) {
+    const el = $('errorBanner');
+    el.innerHTML = escHtml(msg);
+    el.style.display = 'block';
+  }
+
+  function hideError() {
+    $('errorBanner').style.display = 'none';
+  }
+
+  function showSkeleton() {
+    let html = '';
+    for (let i = 0; i < 4; i++) {
+      html += '<div class="skeleton-row"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div>';
+    }
+    $('boardBody').innerHTML = html;
+  }
+
+  // ── localStorage schedule ──
+  function getScheduleKey() { return `amtrak_schedule_${station.code}`; }
+
+  function loadSchedule() {
+    try {
+      const data = JSON.parse(localStorage.getItem(getScheduleKey())) || {};
+      dbg(2, 'schedule', `loaded ${Object.keys(data).length} entries`);
+      return data;
+    } catch (e) {
+      dbgErr('schedule', `load failed: ${e.message}`);
+      return {};
+    }
+  }
+
+  function saveSchedule(schedule) {
+    localStorage.setItem(getScheduleKey(), JSON.stringify(schedule));
+    dbg(2, 'schedule', `saved ${Object.keys(schedule).length} entries`);
+  }
+
+  // Bump past arrival times to tomorrow and re-sort. Live trains get a 30-min grace period
+  // (time to arrive and depart); scheduled entries get none since they're just cached times.
+  const PAST_GRACE_MS = 30 * 60 * 1000;
+  function refreshRows(rows) {
+    const now = new Date();
+    return rows
+      .map(t => {
+        const grace = t.isLive ? PAST_GRACE_MS : 0;
+        if (now.getTime() - t.arrivalDate.getTime() <= grace) return t;
+        const bumped = new Date(t.arrivalDate.getTime() + 24 * 60 * 60 * 1000);
+        return { ...t, arrivalDate: bumped, dateLabel: 'TOMORROW' };
+      })
+      .sort((a, b) => a.arrivalDate - b.arrivalDate);
+  }
+
+  // ── Live cache ──
+  function getLiveCacheKey() { return `amtrak_live_${station.code}`; }
+
+  function saveLiveCache(rows) {
+    try {
+      const serializable = rows.map(r => ({ ...r, arrivalDate: r.arrivalDate.getTime() }));
+      localStorage.setItem(getLiveCacheKey(), JSON.stringify({ ts: Date.now(), rows: serializable }));
+      dbg(2, 'cache', `live saved ${rows.length} rows`);
+    } catch (e) {
+      dbgErr('cache', `live save failed: ${e.message}`);
+    }
+  }
+
+  function loadLiveCache() {
+    try {
+      const raw = localStorage.getItem(getLiveCacheKey());
+      if (!raw) { dbg(1, 'cache', 'live miss'); return null; }
+      const { ts, rows } = JSON.parse(raw);
+      const ageSec = Math.round((Date.now() - ts) / 1000);
+      dbg(1, 'cache', `live hit, age ${ageSec}s, ${rows.length} rows`);
+      return { ts, rows: rows.map(r => ({ ...r, arrivalDate: new Date(r.arrivalDate) })) };
+    } catch (e) {
+      dbgErr('cache', `live load failed: ${e.message}`);
+      return null;
+    }
+  }
+
+  function setStale(ts) {
+    document.body.classList.add('stale');
+    const staleTime = new Date(ts);
+    $('lastUpdated').textContent = `STALE — LAST KNOWN ${formatTimeInTz(staleTime, station.tz)}`;
+  }
+
+  function clearStale() {
+    document.body.classList.remove('stale');
+  }
+
+  // ── Railcam ──
+  function getRailcamKey(code = station.code) { return `amtrak_railcam_${code}`; }
+
+  function loadRailcam(code = station.code) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(getRailcamKey(code)));
+      if (cached && cached.url && !cached.url.includes('results?search_query=')) {
+        dbg(1, 'railcam', `cache hit for ${code}`);
+        return cached.url;
+      }
+    } catch (e) {
+      dbgErr('railcam', `load failed: ${e.message}`);
+    }
+    dbg(1, 'railcam', `no cache for ${code}`);
+    return null;
+  }
+
+  function saveRailcam(url) {
+    localStorage.setItem(getRailcamKey(), JSON.stringify({ url, ts: Date.now() }));
+  }
+
+  function initRailcam(stationName) {
+    station.name = stationName;
+    const cached = loadRailcam();
+    if (cached) { railcamUrl = cached; }
+    updateRailcamStatus();
+  }
+
+  function updateRailcamStatus() {
+    const statusEl = $('railcamStatus');
+    const btn = $('railcamSetupBtn');
+    const watchLink = $('railcamWatch');
+    if (railcamUrl) {
+      statusEl.textContent = 'Saved';
+      statusEl.classList.remove('none');
+      btn.textContent = 'Change';
+      watchLink.href = railcamUrl;
+      watchLink.style.display = '';
+    } else {
+      statusEl.textContent = 'None';
+      statusEl.classList.add('none');
+      btn.textContent = 'Set up';
+      watchLink.style.display = 'none';
+    }
+  }
+
+  function openRailcamPicker() {
+    $('railcamOverlay').style.display = 'flex';
+    $('railcamUrlInput').value = '';
+    $('railcamError').style.display = 'none';
+  }
+
+  function closeRailcamPicker() {
+    $('railcamOverlay').style.display = 'none';
+  }
+
+  $('railcamYtBtn').addEventListener('click', () => {
+    const query = encodeURIComponent(`${station.name || station.code} railcam live`);
+    window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
+  });
+
+  $('railcamSaveBtn').addEventListener('click', () => {
+    const url = $('railcamUrlInput').value.trim();
+    if (!/^https?:\/\/(www\.)?(youtube\.com\/watch\?|youtu\.be\/|youtube\.com\/live\/)/.test(url)) {
+      $('railcamError').style.display = 'block';
+      return;
+    }
+    railcamUrl = url;
+    saveRailcam(url);
+    updateRailcamStatus();
+    closeRailcamPicker();
+    if (lastTrainData) renderBoard(lastTrainData);
+  });
+
+  $('railcamUrlInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('railcamSaveBtn').click();
+    $('railcamError').style.display = 'none';
+  });
+
+  $('railcamSetupBtn').addEventListener('click', openRailcamPicker);
+  $('railcamClose').addEventListener('click', closeRailcamPicker);
+  $('railcamOverlay').addEventListener('click', (e) => {
+    if (e.target === $('railcamOverlay')) closeRailcamPicker();
+  });
+
+  // ── Station directory (for suggestions) ──
+  let stationDirectory = null; // [{code, name}, ...]
+
+  async function loadStationDirectory() {
+    if (stationDirectory) return stationDirectory;
+    try {
+      const resp = await fetch(`${API_BASE}/stations`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      stationDirectory = Object.values(data).filter(s => s.code).map(s => ({ code: s.code, name: s.name || s.code }));
+      return stationDirectory;
+    } catch {
+      return null;
+    }
+  }
+
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = a[i-1] === b[j-1]
+          ? dp[i-1][j-1]
+          : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+      }
+    }
+    return dp[m][n];
+  }
+
+  function findSuggestions(code) {
+    if (!stationDirectory) return [];
+    const upper = code.toUpperCase();
+    // Score by: prefix match, then substring match, then Levenshtein distance
+    const scored = stationDirectory.map(s => {
+      let score = levenshtein(upper, s.code);
+      if (s.code.startsWith(upper)) score -= 3;
+      else if (s.code.includes(upper) || upper.includes(s.code)) score -= 1;
+      // Also check name match
+      if (s.name && s.name.toUpperCase().startsWith(upper)) score -= 2;
+      return { ...s, score };
+    });
+    scored.sort((a, b) => a.score - b.score);
+    return scored.slice(0, 5);
+  }
+
+  async function showStationSuggestions(badCode) {
+    await loadStationDirectory();
+    const suggestions = findSuggestions(badCode);
+    if (!suggestions.length) return;
+
+    const banner = $('errorBanner');
+    let html = banner.innerHTML;
+    html += '<span class="suggestion-label">Did you mean:</span>';
+    for (const s of suggestions) {
+      html += ` <button class="suggestion-btn" data-code="${escHtml(s.code)}">${escHtml(s.code)} — ${escHtml(s.name)}</button>`;
+    }
+    banner.innerHTML = html;
+
+    banner.querySelectorAll('.suggestion-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code');
+        $('stationInput').value = code;
+        switchStation();
+      });
+    });
+  }
+
+  // ── API calls ──
+  async function fetchStation(signal) {
+    const resp = await fetch(`${API_BASE}/stations/${station.code}`, { signal });
+    if (!resp.ok) throw new Error(`Station API returned ${resp.status}`);
+    const data = await resp.json();
+    return data[station.code] || data[Object.keys(data)[0]];
+  }
+
+  async function fetchTrain(num, signal) {
+    const resp = await fetch(`${API_BASE}/trains/${num}`, { signal });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (Array.isArray(data)) return data;
+    const runs = [];
+    for (const key of Object.keys(data)) {
+      const val = data[key];
+      if (Array.isArray(val)) runs.push(...val);
+      else if (val && typeof val === 'object') runs.push(val);
+    }
+    return runs.length ? runs : null;
+  }
+
+  const TD_BASE = 'https://asm-backend.transitdocs.com';
+
+  function tdTrainToRun(train) {
+    return {
+      trainID: `${train.number}-${train.origin_date}`,
+      routeName: train.name,
+      destCode: train.destination,
+      destName: train.destination,
+      origCode: train.origin,
+      origName: train.origin,
+      lat: train.location?.latitude,
+      lon: train.location?.longitude,
+      heading: train.location?.heading,
+      velocity: train.location?.speed,
+      eventName: null,
+      stations: (train.stops || []).map(stop => {
+        const schArr = stop.sched_arrive ? new Date(stop.sched_arrive * 1000).toISOString() : null;
+        const schDep = stop.sched_depart ? new Date(stop.sched_depart * 1000).toISOString() : null;
+        const estArr = stop.sched_arrive && stop.arrive?.variance != null
+          ? new Date((stop.sched_arrive + stop.arrive.variance) * 1000).toISOString() : schArr;
+        const estDep = stop.sched_depart && stop.depart?.variance != null
+          ? new Date((stop.sched_depart + stop.depart.variance) * 1000).toISOString() : schDep;
+        let status = 'Enroute';
+        if (stop.depart?.type === 'ACTUAL') status = 'Departed';
+        else if (stop.arrive?.type === 'ACTUAL') status = 'Station';
+        return { code: stop.code, status, schArr, schDep, arr: estArr, dep: estDep };
+      })
+    };
+  }
+
+  async function fetchTransitdocs(signal) {
+    const [stResp, infoResp] = await Promise.all([
+      fetch(`${TD_BASE}/station/${station.code}`, { signal }),
+      fetch(`${TD_BASE}/stationInfo`, { signal })
+    ]);
+    if (!stResp.ok) throw new Error(stResp.status === 404 ? 'Station not found' : `TransitDocs API returned ${stResp.status}`);
+    const tdStation = await stResp.json();
+
+    const stationData = { code: station.code, tz: station.tz || 'America/Chicago', lat: station.lat, lon: station.lon };
+    if (infoResp.ok) {
+      const infoList = await infoResp.json();
+      const info = infoList.find(s => s.code === station.code);
+      if (info) {
+        stationData.tz = info.timezone || stationData.tz;
+        stationData.lat = info.latitude;
+        stationData.lon = info.longitude;
+        stationData.name = info.city || station.code;
+        stationData.city = info.city;
+        stationData.state = info.state;
+      }
+    }
+
+    const allTrains = [...(tdStation.incoming || []), ...(tdStation.passed || [])];
+    const byNum = {};
+    for (const train of allTrains) {
+      const num = String(train.number);
+      if (!byNum[num]) byNum[num] = [];
+      byNum[num].push(tdTrainToRun(train));
+    }
+    const trainNums = Object.keys(byNum);
+    const trainResults = trainNums.map(num => byNum[num]);
+    return { stationData, trainNums, trainResults };
+  }
+
+  // ── Data processing (extracted from fetchAndRender) ──
+  function findBestRun(runs) {
+    let bestRun = null, bestStop = null, bestArrival = Infinity;
+    for (const run of runs) {
+      for (const stop of (run.stations || [])) {
+        if (stop.code === station.code && (stop.status === 'Enroute' || stop.status === 'Station')) {
+          const arrTime = stop.arr ? new Date(stop.arr).getTime() : Infinity;
+          if (arrTime < bestArrival) {
+            bestRun = run;
+            bestStop = stop;
+            bestArrival = arrTime;
+          }
+          break;
+        }
+      }
+    }
+    return { bestRun, bestStop };
+  }
+
+  function findDepartedRun(runs) {
+    for (const run of runs) {
+      for (const stop of (run.stations || [])) {
+        if (stop.code === station.code && stop.status === 'Departed') {
+          return { departedRun: run, departedStop: stop };
+        }
+      }
+    }
+    return { departedRun: null, departedStop: null };
+  }
+
+  function upsertSchedule(schedule, num, refRun, refStop, today) {
+    const schArrDate = refStop.schArr ? new Date(refStop.schArr) : null;
+    const schDepDate = refStop.schDep ? new Date(refStop.schDep) : null;
+    schedule[num] = {
+      schArr: schArrDate ? formatTimeInTz(schArrDate, station.tz) : (schedule[num]?.schArr || ''),
+      schDep: schDepDate ? formatTimeInTz(schDepDate, station.tz) : (schedule[num]?.schDep || ''),
+      route: refRun.routeName || schedule[num]?.route || '',
+      dir: `→ ${refRun.destName || ''}`,
+      destCode: refRun.destCode || '',
+      destName: refRun.destName || '',
+      origCode: refRun.origCode || '',
+      origName: refRun.origName || '',
+      firstSeen: schedule[num]?.firstSeen || today,
+      lastSeen: today
+    };
+  }
+
+  function buildLiveTrainRow(num, bestRun, bestStop, schedule) {
+    const estArr = bestStop.arr ? new Date(bestStop.arr) : null;
+    const schArr = bestStop.schArr ? new Date(bestStop.schArr) : null;
+    const { statusText, statusClass } = computeDelay(estArr, schArr);
+    const runDay = bestRun.trainID ? bestRun.trainID.split('-').slice(1).join('-') : '';
+    return {
+      trainNum: num,
+      route: bestRun.routeName || schedule[num]?.route || '',
+      runDay,
+      dir: `→ ${bestRun.destName || ''}`,
+      arrivalTime: estArr ? formatTimeInTz(estArr, station.tz) : (schedule[num]?.schArr || '—'),
+      arrivalDate: estArr || new Date(),
+      status: statusText,
+      statusClass,
+      dateLabel: getDateLabel(estArr, station.tz),
+      nearestStation: bestRun.eventName ? `NR: ${bestRun.eventName}` : '',
+      isLive: true,
+      stations: bestRun.stations || [],
+      trainLat: bestRun.lat,
+      trainLon: bestRun.lon,
+      heading: bestRun.heading,
+      velocity: bestRun.velocity
+    };
+  }
+
+  function buildScheduledTrainRow(num, sch, dateLabel) {
+    let arrivalDate = parseScheduledTime(sch.schArr, station.tz);
+    // If label says TOMORROW but parseScheduledTime returned today, force it to tomorrow
+    if (dateLabel === 'TOMORROW') {
+      const now = new Date();
+      const todayStr = now.toLocaleDateString('en-US', { timeZone: station.tz });
+      const arrStr = arrivalDate.toLocaleDateString('en-US', { timeZone: station.tz });
+      if (todayStr === arrStr) {
+        arrivalDate = new Date(arrivalDate.getTime() + 24 * 60 * 60 * 1000);
+      }
+    }
+    return {
+      trainNum: num,
+      route: sch.route,
+      dir: sch.dir,
+      arrivalTime: sch.schArr,
+      arrivalDate,
+      status: 'SCHEDULED',
+      statusClass: 'scheduled',
+      dateLabel,
+      nearestStation: '',
+      isLive: false
+    };
+  }
+
+  function processTrainData(trainNums, trainResults) {
+    const schedule = loadSchedule();
+    const today = new Date().toISOString().slice(0, 10);
+    const displayRows = [];
+
+    for (let i = 0; i < trainNums.length; i++) {
+      const num = trainNums[i];
+      const runs = trainResults[i];
+      if (!runs || runs.length === 0) continue;
+
+      const { bestRun, bestStop } = findBestRun(runs);
+      const { departedRun, departedStop } = bestRun ? { departedRun: null, departedStop: null } : findDepartedRun(runs);
+
+      const refRun = bestRun || departedRun;
+      const refStop = bestStop || departedStop;
+      if (refRun && refStop) upsertSchedule(schedule, num, refRun, refStop, today);
+
+      if (bestRun && bestStop) {
+        dbg(2, `train ${num}`, `live — enroute near ${bestRun.eventName || '?'}`);
+        displayRows.push(buildLiveTrainRow(num, bestRun, bestStop, schedule));
+      } else {
+        const sch = schedule[num];
+        if (sch && sch.schArr) {
+          let label = 'SCHEDULED';
+          if (departedStop) {
+            // Only say TOMORROW if the scheduled time has already passed today
+            const parsedArr = parseScheduledTime(sch.schArr, station.tz);
+            const now = new Date();
+            label = parsedArr.toLocaleDateString('en-US', { timeZone: station.tz }) !== now.toLocaleDateString('en-US', { timeZone: station.tz }) ? 'TOMORROW' : 'SCHEDULED';
+          }
+          dbg(2, `train ${num}`, `scheduled @ ${sch.schArr} (${label})`);
+          displayRows.push(buildScheduledTrainRow(num, sch, label));
+        } else {
+          dbg(2, `train ${num}`, `skipped — no active run and no schedule entry`);
+        }
+      }
+    }
+
+    // Add cached trains not in the current API response
+    const STALE_DAYS = 7;
+    for (const num of Object.keys(schedule)) {
+      if (!trainNums.includes(num)) {
+        const sch = schedule[num];
+        const daysSinceLastSeen = sch?.lastSeen
+          ? Math.floor((Date.now() - new Date(sch.lastSeen).getTime()) / 86400000)
+          : Infinity;
+        if (daysSinceLastSeen > STALE_DAYS) {
+          delete schedule[num];
+          continue;
+        }
+        if (sch && sch.schArr) {
+          const parsedArr = parseScheduledTime(sch.schArr, station.tz);
+          const now = new Date();
+          const label = parsedArr.toLocaleDateString('en-US', { timeZone: station.tz }) !== now.toLocaleDateString('en-US', { timeZone: station.tz }) ? 'TOMORROW' : 'SCHEDULED';
+          displayRows.push(buildScheduledTrainRow(num, sch, label));
+        }
+      }
+    }
+
+    saveSchedule(schedule);
+    displayRows.sort((a, b) => a.arrivalDate - b.arrivalDate);
+    return displayRows;
+  }
+
+  function updateHeader(stationData) {
+    station.tz = stationData.tz || 'America/Chicago';
+    station.lat = stationData.lat;
+    station.lon = stationData.lon;
+    station.name = stationData.name || station.code;
+    saveStationMeta();
+    $('stationName').textContent = (stationData.name || station.code).toUpperCase();
+    const metaParts = [stationData.code];
+    if (stationData.address1 && stationData.address1.trim()) metaParts.push(stationData.address1.trim());
+    if (stationData.city) metaParts.push(`${stationData.city}, ${stationData.state || ''}`);
+    $('stationMeta').textContent = metaParts.join(' · ');
+    document.title = `${stationData.name || station.code} — Amtrak Arrivals`;
+  }
+
+  // ── Main fetch & render ──
+  async function fetchAndRender() {
+    // Cancel any in-flight requests
+    if (fetchController) fetchController.abort();
+    fetchController = new AbortController();
+    const { signal } = fetchController;
+
+    // Clear timers at the start to prevent stale callbacks during fetch
+    clearAllTimers();
+
+    if (isFetching) return;
+    isFetching = true;
+
+    const dot = $('statusDot');
+    dot.classList.add('loading');
+    hideError();
+
+    const fetchStart = Date.now();
+    dbg(1, 'fetch', `starting for ${station.code}`);
+
+    try {
+      let stationData, trainNums, trainResults;
+      const amtrakerTimeout = new AbortController();
+      const amtrakerTimeoutId = setTimeout(() => amtrakerTimeout.abort(), 5000);
+      try {
+        stationData = await fetchStation(amtrakerTimeout.signal);
+        if (!stationData) throw new Error('Station not found');
+        const runIds = stationData.trains || [];
+        trainNums = [...new Set(runIds.map(id => id.split('-')[0]))];
+        trainResults = await Promise.all(trainNums.map(num => fetchTrain(num, amtrakerTimeout.signal)));
+        clearTimeout(amtrakerTimeoutId);
+        dbg(1, 'fetch', `amtraker ok, ${trainNums.length} train(s): ${trainNums.join(', ')}`);
+      } catch (primaryErr) {
+        clearTimeout(amtrakerTimeoutId);
+        if (signal.aborted) throw primaryErr;
+        dbg(1, 'fetch', `amtraker failed (${primaryErr.message}), trying transitdocs`);
+        ({ stationData, trainNums, trainResults } = await fetchTransitdocs(signal));
+        dbg(1, 'fetch', `transitdocs ok, ${trainNums.length} train(s): ${trainNums.join(', ')}`);
+      }
+
+      updateHeader(stationData);
+      initRailcam(stationData.name || station.code);
+
+      const displayRows = processTrainData(trainNums, trainResults);
+      const live = displayRows.filter(r => r.isLive).length;
+      dbg(1, 'fetch', `done in ${Date.now() - fetchStart}ms — ${displayRows.length} rows (${live} live, ${displayRows.length - live} scheduled)`);
+
+      lastTrainData = displayRows;
+      saveLiveCache(displayRows);
+      clearStale();
+      renderBoard(displayRows);
+      updateOpenMap(displayRows);
+      startRerender();
+
+      lastFetchTime = new Date();
+      $('lastUpdated').textContent = `LAST UPDATED ${formatTimeInTz(lastFetchTime, station.tz)}`;
+      dot.classList.remove('loading');
+
+    } catch (err) {
+      if (err.name === 'AbortError') { isFetching = false; return; }
+      dbgErr('fetch', `error: ${err.message}`);
+      dot.classList.remove('loading');
+      // If header is still "LOADING…", show the station code instead
+      if ($('stationName').textContent === 'LOADING…') {
+        $('stationName').textContent = station.code;
+        $('stationMeta').textContent = 'Offline — showing cached schedule';
+        document.title = `${station.code} — Amtrak Arrivals`;
+      }
+      showError(`Failed to fetch data: ${err.message}`);
+      if (err.message === 'Station not found') {
+        showStationSuggestions(station.code).catch(e => dbgErr('suggestions', e.message));
+      }
+
+      const liveCache = loadLiveCache();
+      if (liveCache && liveCache.rows.length) {
+        lastTrainData = liveCache.rows;
+        renderBoard(refreshRows(liveCache.rows));
+        updateOpenMap(liveCache.rows);
+        startRerender();
+        setStale(liveCache.ts);
+      } else {
+        const schedule = loadSchedule();
+        const cached = refreshRows(Object.entries(schedule)
+          .filter(([, sch]) => sch && sch.schArr)
+          .map(([num, sch]) => buildScheduledTrainRow(num, sch, 'CACHED')));
+        if (cached.length) renderBoard(cached);
+        else $('boardBody').innerHTML = '<div class="empty-state">No schedule data yet. Waiting for first successful fetch…</div>';
+      }
+    }
+
+    isFetching = false;
+
+    // Schedule next refresh — use 1-min interval if any live train is arriving soon
+    const hasSoon = lastTrainData && lastTrainData.some(isArrivingSoon);
+    const nextRefresh = hasSoon ? 60 * 1000 : REFRESH_MS;
+    timers.refresh = setTimeout(fetchAndRender, nextRefresh);
+    startCountdown(nextRefresh);
+  }
+
+  // ── Render ──
+  function renderBoard(trains) {
+    if (!trains.length) {
+      $('boardBody').innerHTML = '<div class="empty-state">No trains found. The schedule will build up over time as trains are observed.</div>';
+      return;
+    }
+
+    // Save which detail panels are open before re-rendering
+    const openPanels = new Set();
+    $('boardBody').querySelectorAll('.detail-panel.open').forEach(panel => {
+      const trainNum = panel.getAttribute('data-train');
+      if (trainNum) openPanels.add(trainNum);
+    });
+
+    const hasStations = (t) => t.stations && t.stations.length > 0;
+
+    $('boardBody').innerHTML = trains.map((t, idx) => `
+      <div class="board-row ${t.statusClass}${hasStations(t) ? ' expandable' : ''}${isArrivingSoon(t) ? ' arriving-soon' : ''}" ${hasStations(t) ? `data-detail="detail-${idx}"` : ''}>
+        <div class="train-num">${t.trainNum}</div>
+        <div>
+          <div class="route-name">${escHtml(t.route)}${t.runDay ? ` (${escHtml(t.runDay)})` : ''}</div>
+          ${t.nearestStation ? `<div class="route-nearest">${escHtml(t.nearestStation)}</div>` : ''}
+          ${isArrivingSoon(t) && railcamUrl ? `<a class="railcam-link" href="${railcamUrl}" target="_blank" rel="noopener">WATCH RAILCAM</a>` : ''}
+        </div>
+        <div class="direction col-dir">${escHtml(t.dir)}</div>
+        <div>
+          <div class="arrival-time">${escHtml(t.arrivalTime)}</div>
+          <div class="arrival-label">${escHtml(t.dateLabel)}</div>
+        </div>
+        <div>
+          <span class="status-badge ${t.statusClass}">${escHtml(t.status)}</span>
+          ${t.trainLat != null ? `<button class="map-btn" data-map-idx="${idx}">MAP</button>` : ''}
+          ${!t.isLive ? `<button class="clear-btn remove-btn" data-remove-num="${escHtml(t.trainNum)}">REMOVE</button>` : ''}
+        </div>
+      </div>
+      ${hasStations(t) ? `<div class="detail-panel${openPanels.has(t.trainNum) ? ' open' : ''}" id="detail-${idx}" data-train="${t.trainNum}">${renderDetailPanel(t)}</div>` : ''}
+    `).join('');
+
+    // Attach click handlers for expandable rows
+    $('boardBody').querySelectorAll('.board-row.expandable').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.map-btn') || e.target.closest('.remove-btn')) return;
+        const panelId = row.getAttribute('data-detail');
+        const panel = document.getElementById(panelId);
+        if (panel) panel.classList.toggle('open');
+      });
+    });
+
+    // Attach click handlers for map buttons
+    $('boardBody').querySelectorAll('.map-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-map-idx'));
+        const t = trains[idx];
+        if (t && t.trainLat != null) showTrainMap(t);
+      });
+    });
+
+    // Attach click handlers for remove buttons
+    $('boardBody').querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (btn.classList.contains('armed')) {
+          const num = btn.getAttribute('data-remove-num');
+          const schedule = loadSchedule();
+          delete schedule[num];
+          saveSchedule(schedule);
+          lastTrainData = (lastTrainData || []).filter(t => t.trainNum !== num);
+          renderBoard(lastTrainData);
+        } else {
+          btn.classList.add('armed');
+          btn.textContent = 'CONFIRM?';
+          setTimeout(() => {
+            if (btn.isConnected) {
+              btn.classList.remove('armed');
+              btn.textContent = 'REMOVE';
+            }
+          }, 3000);
+        }
+      });
+    });
+
+    // Stop propagation on railcam watch links
+    $('boardBody').querySelectorAll('.railcam-link').forEach(link => {
+      link.addEventListener('click', (e) => e.stopPropagation());
+    });
+  }
+
+  function renderDetailPanel(t) {
+    const stops = t.stations;
+    let html = '<div class="detail-inner">';
+    html += '<div class="detail-heading"><span>Station-by-station status</span><span>' + escHtml(t.route) + '</span></div>';
+    html += '<div class="detail-stops">';
+    html += `<div class="detail-stop" style="border-left-color:transparent;opacity:0.5;font-size:0.6rem;letter-spacing:1px;text-transform:uppercase;padding-bottom:2px;">
+      <span></span><span>Station</span><span>Sched</span><span>Est</span><span class="detail-stop-delta">+/-</span>
+    </div>`;
+
+    let dividerInserted = false;
+    for (const stop of stops) {
+      let cls = 'enroute';
+      if (stop.status === 'Departed') cls = 'departed';
+      else if (stop.status === 'Station') cls = 'current';
+      if (stop.code === station.code) cls += ' this-station';
+
+      if (!dividerInserted && stop.status !== 'Departed') {
+        html += '<div class="detail-stop-divider">NOW</div>';
+        dividerInserted = true;
+      }
+
+      const tz = stop.tz || station.tz;
+      const schArr = stop.schArr ? new Date(stop.schArr) : null;
+      const estArr = stop.arr ? new Date(stop.arr) : null;
+      const schTimeStr = schArr ? formatTimeInTz(schArr, tz) : '—';
+      const estTimeStr = estArr ? formatTimeInTz(estArr, tz) : '—';
+
+      const { diffMin } = computeDelay(estArr, schArr);
+      let deltaHtml = '';
+      if (schArr && estArr) {
+        if (diffMin > 0) deltaHtml = `<span class="detail-stop-late">+${diffMin}m</span>`;
+        else if (diffMin < 0) deltaHtml = `<span class="detail-stop-early">${diffMin}m</span>`;
+        else deltaHtml = `<span class="detail-stop-ontime">OT</span>`;
+      }
+
+      const stopCam = loadRailcam(stop.code);
+      const camLink = stopCam ? `<a class="detail-stop-cam" href="${escHtml(stopCam)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">&#9654; CAM</a>` : '';
+      html += `<div class="detail-stop ${cls}">
+        <span></span>
+        <span class="detail-stop-name">${escHtml(stop.name)}<span class="detail-stop-code">${escHtml(stop.code)}</span>${camLink}</span>
+        <span>${schTimeStr}</span>
+        <span>${estTimeStr}</span>
+        <span class="detail-stop-delta">${deltaHtml}</span>
+      </div>`;
+    }
+
+    html += '</div></div>';
+    return html;
+  }
+
+  // ── Map (lazy-loaded Leaflet) ──
+  function loadLeaflet() {
+    return new Promise((resolve, reject) => {
+      if (mapState.leafletLoaded) { resolve(); return; }
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = () => { mapState.leafletLoaded = true; resolve(); };
+      script.onerror = () => reject(new Error('Failed to load Leaflet'));
+      document.head.appendChild(script);
+    });
+  }
+
+  function initMap() {
+    if (mapState.instance) { mapState.instance.remove(); mapState.instance = null; }
+    mapState.markers = {};
+    mapState.instance = L.map('mapContainer', { zoomControl: true });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Esri, Maxar, Earthstar Geographics',
+      maxZoom: 18
+    }).addTo(mapState.instance);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 18
+    }).addTo(mapState.instance);
+  }
+
+  function makeTrainIcon(t) {
+    const speed = t.velocity != null ? `${Math.round(t.velocity)}` : '';
+    return L.divIcon({
+      className: '',
+      html: `<div style="background:var(--amber);color:#000;font-family:var(--font-display);width:46px;height:46px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.3);box-shadow:0 2px 6px rgba(0,0,0,0.4);line-height:1;"><span style="font-size:15px;">${t.trainNum}</span>${speed ? `<span style="font-size:9px;font-family:var(--font-mono);opacity:0.7;">${speed}mph</span>` : ''}</div>`,
+      iconSize: [46, 46],
+      iconAnchor: [23, 23]
+    });
+  }
+
+  function makeStationIcon() {
+    return L.divIcon({
+      className: '',
+      html: `<div style="background:var(--green);color:#000;font-family:var(--font-mono);font-size:10px;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.3);box-shadow:0 2px 6px rgba(0,0,0,0.4);">${station.code}</div>`,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    });
+  }
+
+  function makeTrainPopup(t) {
+    let popup = `Train ${t.trainNum} — ${t.route || ''}`;
+    if (t.dir) popup += `<br>${t.dir}`;
+    if (t.heading) popup += `<br>Heading ${t.heading}`;
+    if (t.velocity != null) popup += ` · ${Math.round(t.velocity)} mph`;
+    return popup;
+  }
+
+  async function showTrainMap(t) {
+    await loadLeaflet();
+    $('mapOverlay').style.display = 'flex';
+    $('mapTitle').textContent = `TRAIN ${t.trainNum} — ${t.route}`;
+    mapState.mode = 'train';
+    mapState.trainNum = t.trainNum;
+
+    initMap();
+
+    const marker = L.marker([t.trainLat, t.trainLon], { icon: makeTrainIcon(t) }).addTo(mapState.instance);
+    marker.bindPopup(makeTrainPopup(t));
+    mapState.markers[t.trainNum] = marker;
+
+    if (station.lat != null && station.lon != null) {
+      L.marker([station.lat, station.lon], { icon: makeStationIcon() }).addTo(mapState.instance);
+      const bounds = L.latLngBounds([[t.trainLat, t.trainLon], [station.lat, station.lon]]);
+      mapState.instance.fitBounds(bounds, { padding: [50, 50] });
+    } else {
+      mapState.instance.setView([t.trainLat, t.trainLon], 13);
+    }
+  }
+
+  async function showStationMap() {
+    if (!lastTrainData) return;
+    const activeTrains = lastTrainData.filter(t => t.trainLat != null);
+    if (!activeTrains.length) return;
+
+    await loadLeaflet();
+    $('mapOverlay').style.display = 'flex';
+    $('mapTitle').textContent = `INBOUND — ${station.code}`;
+    mapState.mode = 'station';
+    mapState.trainNum = null;
+
+    initMap();
+
+    const points = station.lat != null && station.lon != null ? [[station.lat, station.lon]] : [];
+    if (station.lat != null && station.lon != null) {
+      L.marker([station.lat, station.lon], { icon: makeStationIcon() }).addTo(mapState.instance);
+    }
+
+    for (const t of activeTrains) {
+      const marker = L.marker([t.trainLat, t.trainLon], { icon: makeTrainIcon(t) }).addTo(mapState.instance);
+      marker.bindPopup(makeTrainPopup(t));
+      mapState.markers[t.trainNum] = marker;
+      points.push([t.trainLat, t.trainLon]);
+    }
+
+    mapState.instance.fitBounds(L.latLngBounds(points), { padding: [50, 50] });
+  }
+
+  function updateOpenMap(trains) {
+    if (!mapState.instance || $('mapOverlay').style.display === 'none') return;
+
+    if (mapState.mode === 'train') {
+      const t = trains.find(tr => tr.trainNum === mapState.trainNum && tr.trainLat != null);
+      if (!t) return;
+      const marker = mapState.markers[t.trainNum];
+      if (marker) {
+        marker.setLatLng([t.trainLat, t.trainLon]);
+        marker.setIcon(makeTrainIcon(t));
+        marker.setPopupContent(makeTrainPopup(t));
+      }
+      $('mapTitle').textContent = `TRAIN ${t.trainNum} — ${t.route}`;
+      const bounds = L.latLngBounds([[t.trainLat, t.trainLon], [station.lat, station.lon]]);
+      mapState.instance.fitBounds(bounds, { padding: [50, 50] });
+    } else if (mapState.mode === 'station') {
+      const activeTrains = trains.filter(t => t.trainLat != null);
+      const points = [[station.lat, station.lon]];
+      const seen = new Set();
+
+      for (const t of activeTrains) {
+        seen.add(t.trainNum);
+        if (mapState.markers[t.trainNum]) {
+          mapState.markers[t.trainNum].setLatLng([t.trainLat, t.trainLon]);
+          mapState.markers[t.trainNum].setIcon(makeTrainIcon(t));
+          mapState.markers[t.trainNum].setPopupContent(makeTrainPopup(t));
+        } else {
+          const marker = L.marker([t.trainLat, t.trainLon], { icon: makeTrainIcon(t) }).addTo(mapState.instance);
+          marker.bindPopup(makeTrainPopup(t));
+          mapState.markers[t.trainNum] = marker;
+        }
+        points.push([t.trainLat, t.trainLon]);
+      }
+
+      for (const num of Object.keys(mapState.markers)) {
+        if (!seen.has(num)) {
+          mapState.instance.removeLayer(mapState.markers[num]);
+          delete mapState.markers[num];
+        }
+      }
+
+      mapState.instance.fitBounds(L.latLngBounds(points), { padding: [50, 50] });
+    }
+  }
+
+  function closeMap() {
+    $('mapOverlay').style.display = 'none';
+    mapState.mode = null;
+    mapState.trainNum = null;
+    mapState.markers = {};
+    if (mapState.instance) { mapState.instance.remove(); mapState.instance = null; }
+  }
+
+  $('stationMapBtn').addEventListener('click', showStationMap);
+
+  let clearArmTimer = null;
+  $('clearStationBtn').addEventListener('click', () => {
+    const btn = $('clearStationBtn');
+    if (btn.classList.contains('armed')) {
+      clearTimeout(clearArmTimer);
+      localStorage.removeItem(getScheduleKey());
+      localStorage.removeItem(getLiveCacheKey());
+      localStorage.removeItem(getRailcamKey());
+      btn.classList.remove('armed');
+      btn.textContent = 'CLEAR DATA';
+      switchStation();
+    } else {
+      btn.classList.add('armed');
+      btn.textContent = 'CONFIRM?';
+      clearArmTimer = setTimeout(() => {
+        btn.classList.remove('armed');
+        btn.textContent = 'CLEAR DATA';
+      }, 3000);
+    }
+  });
+  function syncDebugLevelButtons() {
+    document.querySelectorAll('.debug-level-btn').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.level) <= debugLevel);
+    });
+  }
+
+  $('debugToggleBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    const panel = $('debugPanel');
+    const opening = panel.style.display === 'none';
+    panel.style.display = opening ? 'flex' : 'none';
+    if (opening && debugLevel === 0) {
+      debugLevel = 1;
+      syncDebugLevelButtons();
+    }
+  });
+
+  $('debugClose').addEventListener('click', () => { $('debugPanel').style.display = 'none'; });
+
+  $('debugClearLog').addEventListener('click', () => { $('debugLog').innerHTML = ''; });
+
+  document.querySelectorAll('.debug-level-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const level = parseInt(btn.dataset.level);
+      debugLevel = debugLevel === level ? 0 : level;
+      syncDebugLevelButtons();
+    });
+  });
+
+  let clearAllArmTimer = null;
+  $('clearAllBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    const link = $('clearAllBtn');
+    if (link.dataset.armed === '1') {
+      clearTimeout(clearAllArmTimer);
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('amtrak_')) localStorage.removeItem(key);
+      }
+      location.reload();
+    } else {
+      link.dataset.armed = '1';
+      link.textContent = 'confirm? (clears all stations)';
+      link.style.color = 'rgba(200,70,70,0.7)';
+      clearAllArmTimer = setTimeout(() => {
+        link.dataset.armed = '';
+        link.textContent = 'clear all data';
+        link.style.color = '#2d3748';
+      }, 3000);
+    }
+  });
+
+  $('mapClose').addEventListener('click', closeMap);
+  $('mapOverlay').addEventListener('click', (e) => {
+    if (e.target === $('mapOverlay')) closeMap();
+  });
+
+  // ── Start ──
+  init();
+})();
+</script>
+</body>
+</html>
