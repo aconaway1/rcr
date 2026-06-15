@@ -3,6 +3,8 @@ locale: en-us
 title: Ron Con Rails
 theme: PaperMod
 
+mainSections: ["posts"]
+
 params:
   homeInfoParams:
     Title: "Ron Con Rails"
